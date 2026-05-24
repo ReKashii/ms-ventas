@@ -12,7 +12,7 @@ El microservicio **`ms-ventas`** actúa como el núcleo transaccional financiero
 *   **Ventas Físicas (Presenciales en Caja):** Utilizadas por el **"Asistente de Ventas"** en sucursales físicas (Concepción, Temuco, La Serena). Requiere de forma obligatoria el registro del operador de caja (`asistenteNombre`) y permite la aplicación de convenios de descuento físicos (como convenios estudiantiles).
 *   **Ventas Online (E-commerce):** Utilizadas por el **"Cliente Web"** de forma directa en el portal. Omiten los datos del asistente y permiten la inyección de cupones de descuento web promocionales.
 
-### 🛡️ Reglas de Negocio Críticas Controladas en la Capa Service:
+### Reglas de Negocio Críticas Controladas en la Capa Service:
 1.  **Validación de Caja:** Si la venta es de tipo `PRESENCIAL`, es obligatorio ingresar el campo `asistenteNombre`. De lo contrario, se aborta la transacción y se arroja un error 400.
 2.  **Motor de Descuentos Flexible:**
     *   **15% de Descuento:** Código `CONVENIO_ESTUDIANTIL` o `ESTUDIANTE15` (Convenio estudiantil físico).
@@ -168,7 +168,7 @@ En arquitecturas distribuidas, si el servicio destino (`ms-inventario`) está fu
     ```
 
 ### Ejecutar el Microservicio:
-Abre una terminal en la raíz del microservicio `ms-ventas` (`C:\Users\renat\OneDrive\Documentos\Duoc\Fullstack I\Bookpoint\ms-ventas`) y ejecuta el comando de arranque de Spring Boot:
+Abre una terminal en la raíz del microservicio `ms-ventas`  y ejecuta el comando de arranque de Spring Boot:
 
 ```bash
 mvn clean spring-boot:run
