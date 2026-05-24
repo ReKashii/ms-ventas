@@ -1,132 +1,177 @@
-###  Arquitectura Implementada                                                                                                                                                                   
-                                                                                                                                                                                                    
-  Se ha seguido rigurosamente el patrón CSR y las mejores prácticas en Spring Boot 3.2.x con Java 17:                                                                                               
-                                                                                                                                                                                                    
-  1. Modelos JPA Relacionales: Entidades  Venta  y  DetalleVenta  mapeadas bidireccionalmente. Se usó  @Getter / @Setter  de Lombok en lugar de  @Data  para prevenir desbordamientos de memoria (  
-  StackOverflowError ) por referencias circulares en JPA.                                                                                                                                           
-  2. DTOs de Entrada con Bean Validation (JSR 380): Validaciones estrictas en la capa Controller a través de  @Valid  y anotaciones como  @NotNull ,  @Min  y  @NotEmpty .                          
-  3. Mapeo Limpio de Salida: DTOs específicos de respuesta para asegurar que la entidad JPA no se exponga al cliente Frontend, aislando la capa de base de datos.                                   
-  4. Feign Client Simulado (ms-inventario): Un cliente Feign completo e interactivo apoyado por un componente  Fallback  que simula la lógica del stock localmente para facilitar tus pruebas sin   
-  dependencias externas rígidas.                                                                                                                                                                    
-  5. Manejo Global de Excepciones: Un  @RestControllerAdvice  que captura errores de negocio y errores sintácticos de validación, transformándolos en respuestas JSON uniformes ( ErrorResponse )   
-  con estados HTTP correctos (400, 404, etc.).                                                                                                                                                      
-  6. Logging Profesional (SLF4J): Trazabilidad completa con  @Slf4j  en el flujo crítico de transacciones para auditoría en tiempo real.                                                            
-  ──────                                                                                                                                                                                            
-  ### 📂 Clases Creadas y Módulos del Código                                                                                                                                                        
-                                                                                                                                                                                                    
-  Encontrarás todo el código fuente organizado en los siguientes archivos y paquetes Java dentro de  ventas/src/main/java/cl/bookpointchile/ventas :                                                
-                                                                                                                                                                                                    
-  #### 1. Capa de Dominio (Model)                                                                                                                                                                   
-                                                                                                                                                                                                    
-  •  TipoVenta.java  y  TipoDescuento.java : Enums que controlan las modalidades de compra ( PRESENCIAL ,  ONLINE ) y las promociones aplicadas.                                                    
-  • Venta.java:                                                                                                                                                                                 
-      • Entidad principal JPA con un  folio  único auto-generado (ej:  BP-PRE-A34F5C9B ).                                                                                                           
-      • Relación  @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)  con  DetalleVenta .                                                                              
-      • Métodos utilitarios  addDetalle()  y  removeDetalle()  para mantener sincronizada la bidireccionalidad de Hibernate.                                                                        
-  • DetalleVenta.java:                                                                                                                                                                                
-      • Entidad hija con relación  @ManyToOne  hacia  Venta  configurada con  @JsonIgnore  para evitar loops de serialización.                                                                      
-                                                                                                                                                                                                    
-                                                                                                                                                                                                    
-  #### 2. Objetos de Transferencia de Datos (DTO)                                                                                                                                                   
-                                                                                                                                                                                                    
-  •  VentaRequestDTO.java  y  DetalleVentaRequestDTO.java : DTOs equipados con JSR 380 para interceptar entradas vacías o negativas.                                                                
-  •  VentaResponseDTO.java  y  DetalleVentaResponseDTO.java : Estructuras limpias listas para el consumo de tu aplicación cliente (CSR).                                                            
-  •  StockResponseDTO.java : Modelo de datos de comunicación externa.                                                                                                                               
-                                                                                                                                                                                                    
-  #### 3. Comunicación Inter-servicios (Feign Client)                                                                                                                                               
-                                                                                                                                                                                                    
-  • InventarioClient.java: Interfaz  @FeignClient  declarativa que apunta a  ms-inventario .                                                                                                              
-  • InventarioClientFallback.java:                                                                                                                                                                                
-      • Clase  @Component  de simulación inteligente. Regla de prueba programada: Si consultas con el ID de producto  999 , simulará automáticamente "Stock Insuficiente" (retorna  disponible =    
-      false ), para cualquier otro ID de producto retornará stock disponible para facilitar tus flujos de testing.                                                                                  
-                                                                                                                                                                                                    
-                                                                                                                                                                                                    
-  #### 4. Control de Excepciones (Exception)                                                                                                                                                        
-                                                                                                                                                                                                    
-  •  ResourceNotFoundException.java ,  InsufficientStockException.java  y  InvalidSaleException.java : Excepciones de negocio extendidas de  RuntimeException .                                     
-  •  ErrorResponse.java : Modelo estándar JSON para retornar errores con metadatos (timestamp, status, message, path y detalles específicos de validación).                                         
-  • GlobalExceptionHandler.java: Interceptor de controladores REST. Adapta las excepciones personalizadas y convierte los errores del validador de Spring ( MethodArgumentNotValidException ) en una
-lista clara 
-  de campos inválidos con estado HTTP 400 Bad Request.                                                                                                                                              
-                                                                                                                                                                                                    
-  #### 5. Capa de Persistencia (Repository)                                                                                                                                                         
-                                                                                                                                                                                                    
-  • VentaRepository.java: Interfaz JPA con consulta optimizada por Folio:  Optional<Venta> findByFolio(String folio) .                                                                                   
-                                                                                                                                                                                                    
-  #### 6. Capa de Servicios (Service)                                                                                                                                                               
-                                                                                                                                                                                                    
-  • VentaServiceImpl.java:                                                                                                                                                                                
-      • Contiene la lógica del negocio centralizada bajo la etiqueta  @Transactional .                                                                                                              
-      • Trazabilidad por Logs: Hace uso del logger  @Slf4j  imprimiendo logs detallados ( log.info ,  log.warn ,  log.error ) en puntos críticos.                                                   
-      • Reglas de Descuentos Aplicadas:                                                                                                                                                             
-          • Código  "CONVENIO_ESTUDIANTIL"  o  "ESTUDIANTE15" : Descuento del 15% (Convenios en caja física / Asistente).                                                                           
-          • Código  "DESCUENTO10" : Descuento del 10% (Venta Web / Cupones).                                                                                                                        
-          • Código  "PROMO20" : Descuento del 20% (Campañas especiales Web).                                                                                                                        
-          • Cualquier otro código inválido arroja  InvalidSaleException  (HTTP 400).                                                                                                                
-      • Validación de Caja: Si el tipo de venta es  PRESENCIAL , es obligatorio ingresar el  asistenteNombre . De lo contrario, arroja error.                                                       
-                                                                                                                                                                                                    
-                                                                                                                                                                                                    
-  #### 7. Capa de Controladores (Controller)                                                                                                                                                        
-                                                                                                                                                                                                    
-  • VentaController.java:                                                                                                                                                                                
-      • Expone los endpoints REST bajo  /api/ventas .                                                                                                                                               
-      • Incluye  @CrossOrigin(origins = "*")  para permitir el consumo inmediato del frontend y evitar problemas de políticas CORS en CSR.                                                          
-      • Utiliza  @Valid  para disparar las validaciones sintácticas JSR 380 de manera automática.                                                                                                   
-                                                                                                                                                                                                    
-  ──────                                                                                                                                                                                            
-  ### ⚙️ Archivo de Configuración Creado                                                                                                                                                             
-                                                                                                                                                                                                    
-  He sobrescrito tu configuración para usar estrictamente el formato solicitado en:                                                                                                                 
-                                                                                                                                                                                                    
-  • application.properties:                                                                                                                                                                                
-  Contiene la base de datos MySQL dinámica ( bookpoint_ventas ), las directivas de creación automática de tablas ( spring.jpa.hibernate.ddl-auto=update ), los timeouts de Feign y los niveles de   
-  auditoría de trazas en consola.                                                                                                                                                                   
-  ──────                                                                                                                                                                                            
-  ### 🧪 Pruebas Rápidas de Integración                                                                                                                                                             
-                                                                                                                                                                                                    
-  Ejemplo para probar el microservicio localmente enviando un payload REST POST a  http://localhost:8081/api/ventas :                                                                                     
-                                                                                                                                                                                                    
-  #### Caso 1: Registrar una Venta en Caja (Presencial con Convenio Estudiantil)                                                                                                                    
-                                                                                                                                                                                                    
-  POST  /api/ventas                                                                                                                                                                                 
-                                                                                                                                                                                                    
-    {                                                                                                                                                                                               
-      "tipoVenta": "PRESENCIAL",                                                                                                                                                                    
-      "clienteNombre": "Renato Duoc",                                                                                                                                                               
-      "clienteRut": "12.345.678-9",                                                                                                                                                                 
-      "asistenteNombre": "Diego López",                                                                                                                                                             
-      "codigoDescuento": "CONVENIO_ESTUDIANTIL",                                                                                                                                                    
-      "detalles": [                                                                                                                                                                                 
-        {                                                                                                                                                                                           
-          "productoId": 101,                                                                                                                                                                        
-          "productoNombre": "Introducción a los Algoritmos en Java",                                                                                                                                
-          "cantidad": 2,                                                                                                                                                                            
-          "precioUnitario": 25000.00                                                                                                                                                                
-        }                                                                                                                                                                                           
-      ]                                                                                                                                                                                             
-    }                                                                                                                                                                                               
-                                                                                                                                                                                                    
-  • Lógica aplicada: ms-ventas consultará el stock simulado del producto  101 . Al ser válido, registrará la transacción, aplicará un 15% de descuento estudiantil sobre el subtotal ($50,000)      
-  resultando en un total final de $42,500, persistiendo en BD y retornando el folio único.                                                                                                          
-                                                                                                                                                                                                    
-  #### Caso 2: Simulación de Stock Insuficiente (Venta Online Fallida)                                                                                                                              
-                                                                                                                                                                                                    
-  POST  /api/ventas                                                                                                                                                                                 
-                                                                                                                                                                                                    
-    {                                                                                                                                                                                               
-      "tipoVenta": "ONLINE",                                                                                                                                                                        
-      "clienteNombre": "Comprador Web",                                                                                                                                                             
-      "clienteRut": "98.765.432-1",                                                                                                                                                                 
-      "codigoDescuento": "DESCUENTO10",                                                                                                                                                             
-      "detalles": [                                                                                                                                                                                 
-        {                                                                                                                                                                                           
-          "productoId": 999,                                                                                                                                                                        
-          "productoNombre": "Libro de Programación Avanzada",                                                                                                                                       
-          "cantidad": 1,                                                                                                                                                                            
-          "precioUnitario": 35000.00                                                                                                                                                                
-        }                                                                                                                                                                                           
-      ]                                                                                                                                                                                             
-    }                                                                                                                                                                                               
-                                                                                                                                                                                                    
-  • Lógica aplicada: El microservicio identificará el ID de prueba  999  y la respuesta del FeignClient simulado disparará la excepción  InsufficientStockException  retornando un JSON de error    
-  estructurado con código HTTP 400. 
+# Microservicio ms-ventas - BookPoint Chile
+> **Área:** Gestión de Transacciones de Caja y Venta Online  
+> **Arquitectura:** Microservicios con Spring Boot (Java 17) bajo Patrón CSR  
+> **Puerto por Defecto:** `8081`
+
+---
+
+## 1. Visión General y Responsabilidades
+
+El microservicio **`ms-ventas`** actúa como el núcleo transaccional financiero del ecosistema de **BookPoint Chile**. Este componente es responsable de consolidar de forma consistente e inmutable cualquier compra de libros, artículos de papelería o material educativo, operando bajo dos canales de negocio clave:
+
+*   **Ventas Físicas (Presenciales en Caja):** Utilizadas por el **"Asistente de Ventas"** en sucursales físicas (Concepción, Temuco, La Serena). Requiere de forma obligatoria el registro del operador de caja (`asistenteNombre`) y permite la aplicación de convenios de descuento físicos (como convenios estudiantiles).
+*   **Ventas Online (E-commerce):** Utilizadas por el **"Cliente Web"** de forma directa en el portal. Omiten los datos del asistente y permiten la inyección de cupones de descuento web promocionales.
+
+### 🛡️ Reglas de Negocio Críticas Controladas en la Capa Service:
+1.  **Validación de Caja:** Si la venta es de tipo `PRESENCIAL`, es obligatorio ingresar el campo `asistenteNombre`. De lo contrario, se aborta la transacción y se arroja un error 400.
+2.  **Motor de Descuentos Flexible:**
+    *   **15% de Descuento:** Código `CONVENIO_ESTUDIANTIL` o `ESTUDIANTE15` (Convenio estudiantil físico).
+    *   **10% de Descuento:** Código `DESCUENTO10` (Cupón digital estándar).
+    *   **20% de Descuento:** Código `PROMO20` (Cupón de campaña especial).
+3.  **Auditoría e Inmutabilidad (Folio Único):** Se genera de manera transaccional un folio único con prefijo del canal (`BP-PRE-XXXXXXXX` o `BP-ONL-XXXXXXXX`) utilizando `UUID` para trazabilidad de boletas.
+4.  **Consistencia de Stock en Red (Interoperabilidad Síncrona):** Antes de persistir la venta, el servicio se comunica vía **Feign Client** con el microservicio `ms-inventario` (puerto `8082`) para garantizar que existan existencias físicas en el sistema centralizado de inventario.
+
+---
+
+## 2. Diagrama de Arquitectura y Flujo (CSR Pattern)
+
+A continuación, se detalla el flujo de datos bajo el **patrón CSR (Client-Side Rendering)**. El cliente REST (Frontend) interactúa estrictamente mediante JSON con la API REST descentralizada:
+
+```mermaid
+graph TD
+    %% Definición de Estilos
+    style REST fill:#f9f,stroke:#333,stroke-width:2px
+    style Controller fill:#bbf,stroke:#333,stroke-width:2px
+    style Service fill:#bfb,stroke:#333,stroke-width:2px
+    style Repository fill:#fbf,stroke:#333,stroke-width:2px
+    style Database fill:#f99,stroke:#333,stroke-width:2px
+    style Feign fill:#ffb,stroke:#333,stroke-width:2px
+    style msInventario fill:#ff9,stroke:#333,stroke-width:2px
+
+    REST[Cliente Frontend / Postman] -- "POST /api/ventas (JSON con @Valid)" --> Controller[VentaController]
+    Controller -- "1. Orquesta DTO" --> Service[VentaServiceImpl]
+    
+    %% Flujo Feign
+    Service -- "2. Consulta Stock Síncrono (GET /check-stock)" --> Feign[InventarioClient]
+    Feign -- "Feign Call (Port 8082)" --> msInventario[ms-inventario]
+    msInventario -- "Stock Disponible (True/False)" --> Feign
+    
+    %% Manejo de Estados y Guardado
+    Service -- "3. Aplica Descuentos & Genera Folio" --> Service
+    Service -- "4. Mapea e Inyecta JPA Entity" --> Repository[VentaRepository]
+    Repository -- "5. Persiste Transacción (DDL Update)" --> Database[(MySQL: bookpoint_ventas)]
+    
+    %% Excepciones
+    Controller -.-> Advice[GlobalExceptionHandler @RestControllerAdvice]
+    Advice -.-> |"Retorna 400 / 404 (JSON Limpio)"| REST
+```
+
+---
+
+## 3. Tecnologías Core e Implementación Técnica
+
+El desarrollo se fundamenta en el ecosistema **Spring Cloud** y las especificaciones Java Enterprise para arquitecturas empresariales:
+
+*   **Spring Boot 3.2.5:** Framework base para el bootstrapping y configuración autogestionada (inyección de dependencias, contenedores embebidos y perfiles).
+*   **Spring Data JPA (Hibernate):** Gestión de persistencia orientada a objetos. Implementa relaciones bidireccionales `@OneToMany` (en `Venta`) y `@ManyToOne` (en `DetalleVenta`) configurando operaciones en cascada (`CascadeType.ALL`) y remoción de huérfanos (`orphanRemoval = true`).
+*   **Spring Cloud OpenFeign:** Abstracción declarativa para llamadas síncronas HTTP. Define la interfaz `InventarioClient` que mapea el canal de comunicación con `ms-inventario`, implementando un patrón tolerante a fallos (`fallback`).
+*   **Lombok (Librería Técnica):** Optimiza el código eliminando el boilerplate a través de anotaciones `@Getter`, `@Setter`, `@Builder`, `@NoArgsConstructor` y `@AllArgsConstructor`.
+*   **JSR 380 (Bean Validation 3.0):** Intercepta peticiones malformadas a nivel controlador a través de anotaciones de validación `@NotNull`, `@Min`, `@NotEmpty` y `@NotBlank`.
+*   **SLF4J (Logback):** Integrado nativamente mediante `@Slf4j` en el `Service`. Genera trazabilidad de auditorías críticas en consola y registros históricos.
+
+---
+
+## 4. Documentación de Endpoints REST
+
+La API se expone de forma headless y cuenta con soporte total de CORS habilitado (`@CrossOrigin`) para integraciones ágiles con frontends basados en React, Angular o Vue.
+
+| Método HTTP | Endpoint | Descripción | Códigos HTTP de Respuesta |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/api/ventas` | Registra una nueva venta (física u online), valida stock vía Feign y persiste la boleta con folios únicos. | `201 Created` (Éxito)<br>`400 Bad Request` (RUT inválido, falta asistente en caja, stock insuficiente)<br>`500 Internal Error` |
+| **GET** | `/api/ventas/{folio}` | Recupera una venta específica y todo su detalle de artículos utilizando su código de folio único. | `200 OK` (Éxito)<br>`404 Not Found` (El folio de venta no existe) |
+| **GET** | `/api/ventas` | Obtiene el listado histórico consolidado de todas las ventas registradas. | `200 OK` (Éxito) |
+
+---
+
+## 5. Pruebas de Integración (Postman)
+
+### ✅ Happy Path: Registro Exitoso de Venta en Caja con Descuento Estudiantil
+*   **Método:** `POST`
+*   **URL:** `http://localhost:8081/api/ventas`
+*   **Body (JSON Raw):**
+```json
+{
+  "tipoVenta": "PRESENCIAL",
+  "clienteNombre": "Renato Duoc",
+  "clienteRut": "12.345.678-9",
+  "asistenteNombre": "Diego López",
+  "codigoDescuento": "CONVENIO_ESTUDIANTIL",
+  "detalles": [
+    {
+      "productoId": 101,
+      "productoNombre": "Introducción a los Algoritmos en Java",
+      "cantidad": 2,
+      "precioUnitario": 25000.00
+    }
+  ]
+}
+```
+*   **Efecto:** El sistema llamará a `ms-inventario` para confirmar el stock de la obra `101`. Al ser exitoso, aplicará el **15%** de descuento sobre el subtotal ($50,000) arrojando un total de **$42,500** y persistiendo la venta bajo un folio único `BP-PRE-XXXXXXXX`.
+
+---
+
+### ❌ Flujo de Error: Intento de Compra con Stock Agotado (Código 999)
+*   **Método:** `POST`
+*   **URL:** `http://localhost:8081/api/ventas`
+*   **Body (JSON Raw):**
+```json
+{
+  "tipoVenta": "ONLINE",
+  "clienteNombre": "Comprador Web",
+  "clienteRut": "98.765.432-1",
+  "codigoDescuento": "DESCUENTO10",
+  "detalles": [
+    {
+      "productoId": 999,
+      "productoNombre": "Libro de Algoritmos Avanzados (Agotado)",
+      "cantidad": 1,
+      "precioUnitario": 35000.00
+    }
+  ]
+}
+```
+*   **Efecto:** El microservicio interroga a `ms-inventario`. Al recibir una señal de indisponibilidad para el ID `999`, el servicio interrumpe el hilo transaccional, genera un log de error y el `@RestControllerAdvice` (`GlobalExceptionHandler`) responde con **HTTP 400 Bad Request** y el siguiente JSON estructurado:
+
+```json
+{
+  "timestamp": "2026-05-24T17:23:45.123456",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "El producto 'Libro de Algoritmos Avanzados (Agotado)' (ID: 999) no tiene stock suficiente. Disponible simulado: 0",
+  "path": "/api/ventas",
+  "details": null
+}
+```
+
+### ⚙️ El Rol del Fallback Simulado en Feign
+En arquitecturas distribuidas, si el servicio destino (`ms-inventario`) está fuera de línea, la llamada Feign fallaría abruptamente. Para evitar esto, `ms-ventas` incorpora `InventarioClientFallback.java`. Este componente actúa como un **disyuntor lógico (Circuit Breaker)**: intercepta las llamadas fallidas y responde con lógica preprogramada. En este caso, simula que el ID `999` nunca tiene stock disponible y que el resto de los artículos tienen disponibilidad ilimitada, permitiendo continuar con defensas académicas e integraciones de prueba de forma fluida y sin caídas de red.
+
+---
+
+## 6. Instrucciones de Ejecución
+
+### Requisitos Previos:
+1.  **Java JDK 17** instalado y configurado en las variables de entorno.
+2.  **Apache Maven 3.8+** o wrapper integrado.
+3.  **MySQL Server** en ejecución local o remota.
+
+### Configuración del Entorno:
+1.  Asegúrate de contar con la base de datos `bookpoint_ventas` en tu motor MySQL:
+    ```sql
+    CREATE DATABASE bookpoint_ventas;
+    ```
+2.  Verifica las credenciales de conexión en el archivo [application.properties](src/main/resources/application.properties):
+    ```properties
+    spring.datasource.url=jdbc:mysql://localhost:3306/bookpoint_ventas?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC
+    spring.datasource.username=root
+    spring.datasource.password=tu_contraseña
+    ```
+
+### Ejecutar el Microservicio:
+Abre una terminal en la raíz del microservicio `ms-ventas` (`C:\Users\renat\OneDrive\Documentos\Duoc\Fullstack I\Bookpoint\ms-ventas`) y ejecuta el comando de arranque de Spring Boot:
+
+```bash
+mvn clean spring-boot:run
+```
+
+El servicio iniciará en el puerto **`8081`** y estará listo para recibir peticiones JSON desde Postman, cimentando la capa financiera del e-commerce.
